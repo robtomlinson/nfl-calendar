@@ -1,0 +1,53 @@
+name: Update NFL Calendar
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Get ISO week key
+        id: date
+        run: echo "week=$(date -u +'%G-%V')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore schedule cache
+        uses: actions/cache@v4
+        with:
+          path: cache/schedule.json
+          key: nfl-schedule-${{ steps.date.outputs.week }}
+          restore-keys: nfl-schedule-
+
+      - name: Generate calendar
+        run: python src/main.py
+
+      - name: Save schedule cache
+        uses: actions/cache/save@v4
+        with:
+          path: cache/schedule.json
+          key: nfl-schedule-${{ steps.date.outputs.week }}
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          publish_branch: gh-pages
+          force_orphan: false
+          commit_message: 'Update NFL calendar'
