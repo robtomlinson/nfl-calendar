@@ -1,4 +1,5 @@
 cache/
+plans/
 __pycache__/
 *.pyc
 *.pyo
