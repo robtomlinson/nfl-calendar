@@ -1,5 +1,4 @@
 import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,6 +8,8 @@ from calendar_gen import build_calendar
 CACHE_FILE = Path(__file__).parent.parent / "cache" / "schedule.json"
 OUTPUT_FILE = Path(__file__).parent.parent / "docs" / "nfl_2026.ics"
 FULL_REFRESH_DAYS = 7
+SEQUENCE_VERSION = 2
+SEQUENCE_BASE = 1_000_000
 
 
 def load_cache() -> dict:
@@ -33,10 +34,20 @@ def needs_full_refresh(cache: dict) -> bool:
     return age_days >= FULL_REFRESH_DAYS
 
 
+def migrate_sequences(cache: dict) -> None:
+    """Move old event sequences into a new, monotonic range once."""
+    if cache.get("sequence_version") == SEQUENCE_VERSION:
+        return
+
+    for game in cache.get("games", {}).values():
+        game["_sequence"] = SEQUENCE_BASE + game.get("_sequence", 0)
+    cache["sequence_version"] = SEQUENCE_VERSION
+
+
 def merge_game(existing: dict | None, incoming: dict) -> dict:
     """Merge incoming game data into existing, bumping _sequence on meaningful changes."""
     if existing is None:
-        return incoming
+        return {**incoming, "_sequence": SEQUENCE_BASE}
 
     seq = existing.get("_sequence", 0)
     changed = (
@@ -52,6 +63,7 @@ def merge_game(existing: dict | None, incoming: dict) -> dict:
 def main() -> None:
     now = datetime.now(tz=timezone.utc)
     cache = load_cache()
+    migrate_sequences(cache)
     games_by_id: dict = cache.get("games", {})
 
     if needs_full_refresh(cache):
@@ -66,18 +78,15 @@ def main() -> None:
         print(f"Cache is fresh (fetched {cache['fetched_at']}), skipping full refresh")
 
     print("Fetching live scoreboard...")
-    try:
-        scoreboard = fetch_scoreboard()
-        live_events = scoreboard.get("events", [])
-        live_count = 0
-        for event in live_events:
-            game = parse_game(event)
-            games_by_id[game["id"]] = merge_game(games_by_id.get(game["id"]), game)
-            if game["status"] == "STATUS_IN_PROGRESS":
-                live_count += 1
-        print(f"Scoreboard: {len(live_events)} games this week, {live_count} live")
-    except Exception as e:
-        print(f"Scoreboard fetch failed: {e}", file=sys.stderr)
+    scoreboard = fetch_scoreboard()
+    live_events = scoreboard.get("events", [])
+    live_count = 0
+    for event in live_events:
+        game = parse_game(event)
+        games_by_id[game["id"]] = merge_game(games_by_id.get(game["id"]), game)
+        if game["status"] == "STATUS_IN_PROGRESS":
+            live_count += 1
+    print(f"Scoreboard: {len(live_events)} games this week, {live_count} live")
 
     save_cache({**cache, "games": games_by_id})
 

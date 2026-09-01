@@ -2,7 +2,7 @@ name: Update NFL Calendar
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -28,11 +28,13 @@ jobs:
         run: echo "week=$(date -u +'%G-%V')" >> "$GITHUB_OUTPUT"
 
       - name: Restore schedule cache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: cache/schedule.json
-          key: nfl-schedule-${{ steps.date.outputs.week }}
-          restore-keys: nfl-schedule-
+          key: nfl-schedule-${{ steps.date.outputs.week }}-${{ github.run_id }}
+          restore-keys: |
+            nfl-schedule-${{ steps.date.outputs.week }}-
+            nfl-schedule-
 
       - name: Generate calendar
         run: python src/main.py
@@ -41,7 +43,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: cache/schedule.json
-          key: nfl-schedule-${{ steps.date.outputs.week }}
+          key: nfl-schedule-${{ steps.date.outputs.week }}-${{ github.run_id }}
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
