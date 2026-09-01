@@ -51,10 +51,10 @@ def _description(game: dict) -> str:
     return "\n".join(lines)
 
 
-def game_to_event(game: dict, now: datetime) -> Event:
+def game_to_event(game: dict, now: datetime, season_year: int) -> Event:
     event = Event()
 
-    event.add("uid", f"nfl-2026-{game['id']}@espn.com")
+    event.add("uid", f"nfl-{season_year}-{game['id']}@espn.com")
     event.add("sequence", game.get("_sequence", 0))
     event.add("dtstamp", now)
     event.add("last-modified", now)
@@ -72,12 +72,12 @@ def game_to_event(game: dict, now: datetime) -> Event:
     return event
 
 
-def last_updated_event(updated_at: datetime) -> Event:
+def last_updated_event(updated_at: datetime, season_year: int) -> Event:
     event = Event()
 
-    event.add("uid", "nfl-2026-last-updated@espn.com")
+    event.add("uid", f"nfl-{season_year}-last-updated@espn.com")
 
-    epoch = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    epoch = datetime(season_year, 1, 1, tzinfo=timezone.utc)
     sequence = int((updated_at - epoch).total_seconds() // 900)
     event.add("sequence", sequence)
 
@@ -96,22 +96,26 @@ def last_updated_event(updated_at: datetime) -> Event:
     return event
 
 
-def build_calendar(games: list, updated_at: datetime) -> bytes:
+def build_calendar(
+    games: list, updated_at: datetime, season_year: int, refresh_period: timedelta
+) -> bytes:
     cal = Calendar()
-    cal.add("prodid", "-//NFL 2026 Calendar//EN")
+    cal.add("prodid", "-//NFL Current Season Calendar//EN")
     cal.add("version", "2.0")
     cal.add("calscale", "GREGORIAN")
     cal.add("method", "PUBLISH")
-    cal.add("x-wr-calname", "NFL 2026-2027")
-    cal.add("x-wr-caldesc", "NFL 2026-2027 Schedule with Live Scores")
-    refresh = vDuration(timedelta(minutes=15))
+    season_label = f"{season_year}-{season_year + 1}"
+    cal.add("x-wr-calname", f"NFL {season_label}")
+    cal.add("x-wr-caldesc", f"NFL {season_label} Schedule with Live Scores")
+    refresh = vDuration(refresh_period)
     refresh.params["VALUE"] = "DURATION"
     cal.add("refresh-interval", refresh)
-    cal.add("x-published-ttl", vText("PT15M"))
+    ttl = "P7D" if refresh_period >= timedelta(days=1) else "PT15M"
+    cal.add("x-published-ttl", vText(ttl))
 
     for game in sorted(games, key=lambda g: g["date"]):
-        cal.add_component(game_to_event(game, updated_at))
+        cal.add_component(game_to_event(game, updated_at, season_year))
 
-    cal.add_component(last_updated_event(updated_at))
+    cal.add_component(last_updated_event(updated_at, season_year))
 
     return cal.to_ical()

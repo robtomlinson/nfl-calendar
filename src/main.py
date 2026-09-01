@@ -7,7 +7,7 @@ from fetch import fetch_full_season, fetch_scoreboard, parse_game
 from calendar_gen import build_calendar
 
 CACHE_FILE = Path(__file__).parent.parent / "cache" / "schedule.json"
-OUTPUT_FILE = Path(__file__).parent.parent / "docs" / "nfl_2026.ics"
+OUTPUT_FILE = Path(__file__).parent.parent / "docs" / "nfl.ics"
 FULL_REFRESH_FALLBACK_DAYS = 8
 SEQUENCE_VERSION = 2
 SEQUENCE_BASE = 1_000_000
@@ -46,6 +46,23 @@ def save_cache(data: dict) -> None:
 def _refresh_week_key(value: datetime) -> str:
     iso_year, iso_week, _ = value.astimezone(REFRESH_TIMEZONE).isocalendar()
     return f"{iso_year}-{iso_week:02d}"
+
+
+def is_active_season(now: datetime) -> bool:
+    """The NFL plays preseason through postseason from August through February."""
+    return now.astimezone(REFRESH_TIMEZONE).month in (1, 2, 8, 9, 10, 11, 12)
+
+
+def scoreboard_season_year(scoreboard: dict) -> int:
+    """Read ESPN's current NFL season year from a scoreboard response."""
+    year = scoreboard.get("season", {}).get("year")
+    if year is None:
+        leagues = scoreboard.get("leagues", [])
+        if leagues:
+            year = leagues[0].get("season", {}).get("year")
+    if year is None:
+        raise ValueError("ESPN scoreboard did not include a season year")
+    return int(year)
 
 
 def needs_full_refresh(cache: dict, now: datetime | None = None) -> bool:
@@ -93,9 +110,27 @@ def main() -> None:
     migrate_sequences(cache)
     games_by_id: dict = cache.get("games", {})
 
-    if needs_full_refresh(cache, now):
+    print("Fetching current scoreboard...")
+    scoreboard = fetch_scoreboard()
+    season_year = scoreboard_season_year(scoreboard)
+    cached_season_year = cache.get("season_year")
+    season_changed = cached_season_year is not None and cached_season_year != season_year
+
+    if season_changed:
+        print(f"NFL season changed from {cached_season_year} to {season_year}")
+        games_by_id = {}
+        cache.pop("fetched_at", None)
+        cache.pop("full_refresh_week", None)
+    cache["season_year"] = season_year
+
+    if season_changed or needs_full_refresh(cache, now):
         print("Full season refresh...")
-        events = fetch_full_season()
+        events = fetch_full_season(season_year)
+        if not events:
+            raise RuntimeError(
+                f"ESPN returned no games for the {season_year} NFL season; "
+                "refusing to replace the published calendar"
+            )
         for event in events:
             game = parse_game(event)
             games_by_id[game["id"]] = merge_game(games_by_id.get(game["id"]), game)
@@ -105,8 +140,6 @@ def main() -> None:
     else:
         print(f"Cache is fresh (fetched {cache['fetched_at']}), skipping full refresh")
 
-    print("Fetching live scoreboard...")
-    scoreboard = fetch_scoreboard()
     live_events = scoreboard.get("events", [])
     live_count = 0
     for event in live_events:
@@ -119,7 +152,8 @@ def main() -> None:
     save_cache({**cache, "games": games_by_id})
 
     games = list(games_by_id.values())
-    ics_bytes = build_calendar(games, now)
+    refresh_period = timedelta(minutes=15) if is_active_season(now) else timedelta(days=7)
+    ics_bytes = build_calendar(games, now, season_year, refresh_period)
 
     OUTPUT_FILE.parent.mkdir(exist_ok=True)
     OUTPUT_FILE.write_bytes(ics_bytes)

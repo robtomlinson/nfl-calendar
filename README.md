@@ -1,10 +1,10 @@
-# NFL 2026-2027 iCal Calendar
+# Current NFL Season iCal Calendar
 
-Subscribable calendar for the complete 2026-2027 NFL season with live and final scores, updated every 15 minutes via GitHub Actions.
+Subscribable calendar for the current NFL season with live and final scores. Subscribe once and keep the same URL across future seasons.
 
 ## Subscribe
 
-**URL:** `https://robtomlinson.github.io/nfl-calendar/nfl_2026.ics`
+**URL:** `https://robtomlinson.github.io/nfl-calendar/nfl.ics`
 
 **iPhone:** Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar → paste URL
 
@@ -21,7 +21,9 @@ Subscribable calendar for the complete 2026-2027 NFL season with live and final 
 ## How it works
 
 - Data from ESPN's public API (no API key required)
-- GitHub Actions runs every 15 minutes and regenerates the `.ics` file
+- During the NFL season, GitHub Actions updates the calendar every 15 minutes
+- During the offseason, the calendar updates once each Tuesday
+- The season year is detected automatically from ESPN
 - Hosted on GitHub Pages at the subscribe URL above
 - All times stored as UTC — your calendar app converts to local time automatically
 
@@ -32,4 +34,4 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
-Generates `docs/nfl_2026.ics`.
+Generates `docs/nfl.ics`.

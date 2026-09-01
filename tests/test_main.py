@@ -9,6 +9,8 @@ from main import (
     merge_game,
     migrate_sequences,
     needs_full_refresh,
+    is_active_season,
+    scoreboard_season_year,
 )
 
 
@@ -117,6 +119,42 @@ class FullRefreshTests(unittest.TestCase):
         }
         wednesday = datetime(2026, 9, 2, 12, tzinfo=timezone.utc)
         self.assertTrue(needs_full_refresh(cache, wednesday))
+
+
+class SeasonTests(unittest.TestCase):
+    def test_reads_season_year_from_scoreboard(self):
+        self.assertEqual(scoreboard_season_year({"season": {"year": 2027}}), 2027)
+
+    def test_missing_season_year_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "season year"):
+            scoreboard_season_year({})
+
+    def test_active_season_months(self):
+        self.assertTrue(is_active_season(datetime(2027, 2, 1, 12, tzinfo=timezone.utc)))
+        self.assertTrue(is_active_season(datetime(2027, 8, 1, 12, tzinfo=timezone.utc)))
+        self.assertFalse(is_active_season(datetime(2027, 6, 1, 12, tzinfo=timezone.utc)))
+
+    @patch.object(app, "build_calendar")
+    @patch.object(app, "save_cache")
+    @patch.object(app, "fetch_full_season", return_value=[])
+    @patch.object(app, "fetch_scoreboard", return_value={"season": {"year": 2027}})
+    @patch.object(
+        app,
+        "load_cache",
+        return_value={
+            "season_year": 2026,
+            "fetched_at": "2026-09-01T00:00:00+00:00",
+            "games": {"old-game": game()},
+        },
+    )
+    def test_empty_new_season_does_not_replace_published_calendar(
+        self, _load, _scoreboard, _full_season, save_cache, build_calendar
+    ):
+        with self.assertRaisesRegex(RuntimeError, "refusing to replace"):
+            app.main()
+
+        save_cache.assert_not_called()
+        build_calendar.assert_not_called()
 
 
 class FailureHandlingTests(unittest.TestCase):

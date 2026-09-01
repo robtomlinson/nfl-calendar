@@ -2,7 +2,10 @@ name: Update NFL Calendar
 
 on:
   schedule:
-    - cron: '7,22,37,52 * * * *'
+    # Active NFL season: every 15 minutes, August through February.
+    - cron: '7,22,37,52 * * 1,2,8-12'
+    # Offseason: once each Tuesday at 08:17 UTC.
+    - cron: '17 8 * 3-7 2'
   workflow_dispatch:
 
 permissions:

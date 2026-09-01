@@ -10,7 +10,7 @@ SEASON_TYPES = {
 }
 
 
-def fetch_week(season_type: int, week: int, season_year: int = 2026) -> dict:
+def fetch_week(season_type: int, week: int, season_year: int) -> dict:
     url = f"{ESPN_BASE}/scoreboard"
     params = {"seasontype": season_type, "week": week, "dates": season_year}
     resp = requests.get(url, params=params, timeout=30)
@@ -25,7 +25,7 @@ def fetch_scoreboard() -> dict:
     return resp.json()
 
 
-def fetch_full_season(year: int = 2026) -> list:
+def fetch_full_season(year: int) -> list:
     """Fetch all events across preseason, regular season, and playoffs."""
     all_events = []
     for season_type, weeks in SEASON_TYPES.items():

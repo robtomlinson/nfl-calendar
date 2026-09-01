@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from icalendar import Calendar
 
@@ -32,7 +32,12 @@ class CalendarTests(unittest.TestCase):
     def test_final_score_and_sequence_are_published(self):
         now = datetime(2026, 9, 10, 4, tzinfo=timezone.utc)
         calendar = Calendar.from_ical(
-            build_calendar([game(status="STATUS_FINAL", sequence=SEQUENCE_BASE + 2)], now)
+            build_calendar(
+                [game(status="STATUS_FINAL", sequence=SEQUENCE_BASE + 2)],
+                now,
+                2026,
+                timedelta(minutes=15),
+            )
         )
         event = next(
             component
@@ -41,6 +46,26 @@ class CalendarTests(unittest.TestCase):
         )
         self.assertEqual(str(event["SUMMARY"]), "NE 21 @ SEA 24 (Final)")
         self.assertEqual(int(event["SEQUENCE"]), SEQUENCE_BASE + 2)
+
+    def test_calendar_metadata_uses_detected_season(self):
+        now = datetime(2027, 9, 10, 4, tzinfo=timezone.utc)
+        calendar = Calendar.from_ical(
+            build_calendar([game()], now, 2027, timedelta(minutes=15))
+        )
+        self.assertEqual(str(calendar["X-WR-CALNAME"]), "NFL 2027-2028")
+        event = next(
+            component
+            for component in calendar.walk("VEVENT")
+            if "401000001" in str(component["UID"])
+        )
+        self.assertEqual(str(event["UID"]), "nfl-2027-401000001@espn.com")
+
+    def test_offseason_calendar_requests_weekly_refresh(self):
+        now = datetime(2027, 6, 1, 12, tzinfo=timezone.utc)
+        calendar = Calendar.from_ical(
+            build_calendar([game()], now, 2027, timedelta(days=7))
+        )
+        self.assertEqual(str(calendar["X-PUBLISHED-TTL"]), "P7D")
 
 
 if __name__ == "__main__":
