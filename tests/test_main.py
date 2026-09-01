@@ -1,14 +1,32 @@
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import main as app
-from main import SEQUENCE_BASE, SEQUENCE_VERSION, merge_game, migrate_sequences
+from main import (
+    SEQUENCE_BASE,
+    SEQUENCE_VERSION,
+    merge_game,
+    migrate_sequences,
+    needs_full_refresh,
+)
 
 
 def game(**overrides):
     data = {
         "id": "game-1",
+        "date": "2026-09-13T17:00:00Z",
+        "away_abbr": "NE",
+        "away_name": "New England Patriots",
+        "home_abbr": "SEA",
+        "home_name": "Seattle Seahawks",
+        "venue": "Lumen Field",
+        "city": "Seattle",
+        "state": "WA",
+        "country": "USA",
+        "networks": ["CBS"],
         "status": "STATUS_SCHEDULED",
+        "status_detail": "Sun, September 13 at 1:00 PM EDT",
         "away_score": "0",
         "home_score": "0",
         "_sequence": 0,
@@ -33,12 +51,64 @@ class SequenceTests(unittest.TestCase):
         merged = merge_game(existing, game())
         self.assertEqual(merged["_sequence"], SEQUENCE_BASE + 3)
 
+    def test_schedule_changes_increment_sequence(self):
+        changes = {
+            "date": "2026-09-14T00:20:00Z",
+            "away_abbr": "BUF",
+            "home_name": "Portland Seahawks",
+            "venue": "Alternate Stadium",
+            "networks": ["NBC"],
+            "status_detail": "Flexed to Sunday Night Football",
+        }
+
+        for field, value in changes.items():
+            with self.subTest(field=field):
+                existing = game(_sequence=SEQUENCE_BASE)
+                incoming = game(**{field: value})
+                self.assertEqual(
+                    merge_game(existing, incoming)["_sequence"], SEQUENCE_BASE + 1
+                )
+
     def test_old_cache_is_migrated_only_once(self):
         cache = {"games": {"game-1": game(_sequence=1)}}
         migrate_sequences(cache)
         migrate_sequences(cache)
         self.assertEqual(cache["sequence_version"], SEQUENCE_VERSION)
         self.assertEqual(cache["games"]["game-1"]["_sequence"], SEQUENCE_BASE + 1)
+
+
+class FullRefreshTests(unittest.TestCase):
+    def test_refreshes_on_tuesday_in_a_new_iso_week(self):
+        cache = {
+            "fetched_at": "2026-08-25T12:00:00+00:00",
+            "full_refresh_week": "2026-35",
+        }
+        tuesday = datetime(2026, 9, 1, 12, tzinfo=timezone.utc)
+        self.assertTrue(needs_full_refresh(cache, tuesday))
+
+    def test_refreshes_only_once_during_tuesday(self):
+        cache = {
+            "fetched_at": "2026-09-01T07:05:00+00:00",
+            "full_refresh_week": "2026-36",
+        }
+        later_tuesday = datetime(2026, 9, 1, 22, tzinfo=timezone.utc)
+        self.assertFalse(needs_full_refresh(cache, later_tuesday))
+
+    def test_does_not_refresh_early_on_monday(self):
+        cache = {
+            "fetched_at": "2026-08-25T12:00:00+00:00",
+            "full_refresh_week": "2026-35",
+        }
+        monday = datetime(2026, 8, 31, 22, tzinfo=timezone.utc)
+        self.assertFalse(needs_full_refresh(cache, monday))
+
+    def test_overdue_refresh_runs_after_a_missed_tuesday(self):
+        cache = {
+            "fetched_at": "2026-08-25T12:00:00+00:00",
+            "full_refresh_week": "2026-35",
+        }
+        wednesday = datetime(2026, 9, 2, 12, tzinfo=timezone.utc)
+        self.assertTrue(needs_full_refresh(cache, wednesday))
 
 
 class FailureHandlingTests(unittest.TestCase):
