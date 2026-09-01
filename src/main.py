@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fetch import fetch_full_season, fetch_scoreboard, parse_game
 from calendar_gen import build_calendar
@@ -26,6 +27,7 @@ CALENDAR_FIELDS = (
     "away_score",
     "home_score",
 )
+REFRESH_TIMEZONE = ZoneInfo("America/Chicago")
 
 
 def load_cache() -> dict:
@@ -41,8 +43,8 @@ def save_cache(data: dict) -> None:
         json.dump(data, f)
 
 
-def _week_key(value: datetime) -> str:
-    iso_year, iso_week, _ = value.isocalendar()
+def _refresh_week_key(value: datetime) -> str:
+    iso_year, iso_week, _ = value.astimezone(REFRESH_TIMEZONE).isocalendar()
     return f"{iso_year}-{iso_week:02d}"
 
 
@@ -53,10 +55,10 @@ def needs_full_refresh(cache: dict, now: datetime | None = None) -> bool:
     if not fetched_at:
         return True
 
-    if cache.get("full_refresh_week") == _week_key(now):
+    if cache.get("full_refresh_week") == _refresh_week_key(now):
         return False
 
-    if now.weekday() == 1:  # Tuesday
+    if now.astimezone(REFRESH_TIMEZONE).weekday() == 1:  # Tuesday
         return True
 
     last = datetime.fromisoformat(fetched_at)
@@ -98,7 +100,7 @@ def main() -> None:
             game = parse_game(event)
             games_by_id[game["id"]] = merge_game(games_by_id.get(game["id"]), game)
         cache["fetched_at"] = now.isoformat()
-        cache["full_refresh_week"] = _week_key(now)
+        cache["full_refresh_week"] = _refresh_week_key(now)
         print(f"Full refresh complete: {len(games_by_id)} games loaded")
     else:
         print(f"Cache is fresh (fetched {cache['fetched_at']}), skipping full refresh")

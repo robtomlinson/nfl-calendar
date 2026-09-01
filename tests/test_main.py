@@ -102,6 +102,14 @@ class FullRefreshTests(unittest.TestCase):
         monday = datetime(2026, 8, 31, 22, tzinfo=timezone.utc)
         self.assertFalse(needs_full_refresh(cache, monday))
 
+    def test_utc_tuesday_does_not_start_refresh_while_central_time_is_monday(self):
+        cache = {
+            "fetched_at": "2026-08-25T12:00:00+00:00",
+            "full_refresh_week": "2026-35",
+        }
+        monday_evening_central = datetime(2026, 9, 1, 2, tzinfo=timezone.utc)
+        self.assertFalse(needs_full_refresh(cache, monday_evening_central))
+
     def test_overdue_refresh_runs_after_a_missed_tuesday(self):
         cache = {
             "fetched_at": "2026-08-25T12:00:00+00:00",
